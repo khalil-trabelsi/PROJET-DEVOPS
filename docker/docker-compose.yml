@@ -65,3 +65,7 @@ secrets:
   nextcloud_admin_password:
     external: true
 
+volumes:
+  mariadb_data:
+  wordpress_data:
+  nextcloud_data:
