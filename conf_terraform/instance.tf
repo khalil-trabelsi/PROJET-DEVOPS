@@ -22,3 +22,14 @@ resource "openstack_compute_floatingip_associate_v2" "fip_2" {
   floating_ip = openstack_networking_floatingip_v2.fip_2.address
   instance_id = openstack_compute_instance_v2.basic.id
 }
+
+# attach a volume to our instance 
+resource "openstack_blockstorage_volume_v3" "volume_1" {
+	name = "volume_1"
+	size = 2
+}
+
+resource "openstack_compute_volume_attach_v2" "va_1" {
+	instance_id = openstack_compute_instance_v2.basic.id
+	volume_id = openstack_compute_blockstorage_volume_3.volume_1.id
+}
