@@ -1,71 +1,58 @@
 services:
   mariadb:
     image: mariadb:latest
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
-      MYSQL_DATABASE_FILE: /run/secrets/mysql_database
-      MYSQL_USER_ALPHA_FILE: /run/secrets/mysql_user_alpha
-      MYSQL_PASSWORD_ALPHA_FILE: /run/secrets/mysql_password_alpha
-      MYSQL_USER_BETA_FILE: /run/secrets/mysql_user_beta
-      MYSQL_PASSWORD_BETA_FILE: /run/secrets/mysql_password_beta
+    # restart: always
     volumes:
-      - mariadb_data:/var/lib/mysql
-    secrets:
-      - mysql_root_password
-      - mysql_database
-      - mysql_user_alpha
-      - mysql_password_alpha
-      - mysql_user_beta
-      - mysql_password_beta
-
+      - /mnt/mariadb_data:/var/lib/mysql
+      - /mnt/sock:/var/run/mysqld
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    networks:
+      - my-network
+    ports:
+      - "3306:3306"
   nextcloud:
     image: nextcloud:latest
     restart: always
     ports:
-      - "8080:80"
+      - "8083:80"
     environment:
-      NEXTCLOUD_ADMIN_USER: admin
-      NEXTCLOUD_ADMIN_PASSWORD_FILE: /run/secrets/nextcloud_admin_password
+      - "MYSQL_HOST: mariadb"
+      - "MYSQL_DATABASE: nextcloud_db"
+      - "MYSQL_USER: nextcloud_admin"
+      - "MYSQL_PASSWORD: nextcloud"  
     volumes:
-      - nextcloud_data:/var/www/html
-    secrets:
-      - nextcloud_admin_password
-
+      - /mnt/nextcloud_data:/var/www/html
+      - /mnt/sock:/var/run/mysql
+    depends_on:
+      - mariadb    
+    networks:
+      - my-network  
   wordpress:
     image: wordpress:latest
+    environment:
+      - "MYSQL_HOST: mariadb"
+      - "MYSQL_DATABASE: wordpress_db"
+      - "MYSQL_USER: wordpress_admin"
+      - "MYSQL_PASSWORD: wordpress"
     restart: always
     ports:
       - "8081:80"
-    environment:
-      WORDPRESS_DB_HOST: mariadb
-      WORDPRESS_DB_NAME_FILE: /run/secrets/mysql_database
-      WORDPRESS_DB_USER_FILE: /run/secrets/mysql_user_alpha
-      WORDPRESS_DB_PASSWORD_FILE: /run/secrets/mysql_password_alpha
     volumes:
-      - wordpress_data:/var/www/html
-    secrets:
-      - mysql_database
-      - mysql_user_alpha
-      - mysql_password_alpha
+      - /mnt/wordpress_data:/var/www/html
+      - /mnt/sock:/var/run/mysql
+    depends_on: 
+      - mariadb
+    networks:
+      - my-network
+        
 
-secrets:
-  mysql_root_password:
-    external: true
-  mysql_database:
-    external: true
-  mysql_user_alpha:
-    external: true
-  mysql_password_alpha:
-    external: true
-  mysql_user_beta:
-    external: true
-  mysql_password_beta:
-    external: true
-  nextcloud_admin_password:
-    external: true
-
+networks:
+  my-network:
+    driver: bridge
+  
 volumes:
-  mariadb_data:
-  wordpress_data:
   nextcloud_data:
+  wordpress_data:
+  mariadb_data:
+  sock:
