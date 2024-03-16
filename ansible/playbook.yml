@@ -1,13 +1,32 @@
 - name: Tp noté
   hosts: servers
   become: false
-  any_error_fatal: true
+  any_errors_fatal: true
+  # vars:
+    # - vault_addr:  https://vault.edu.forestier.re/v1/home/data/khtrabelsi
+    # - vault_secret_path: mysql_root_pass
+  tasks:    
+    - name: set nameservers
+      become: true
+      ansible.builtin.lineinfile:
+        path: "/etc/resolv.conf" 
+        line: "nameserver 8.8.8.8" 
+# 
+    # - name: create project folder
+      # ansible.builtin.shell:
+        # cmd: mkdir app
+    - name: copy docker-compose file to project folder
+      ansible.builtin.copy:
+        src: /home/khalil/PROJET-DEVOPS/docker/docker-compose.yml
+        dest: /home/khalil/app/docker-compose.yml
+    - name: run docker compose
+      ansible.builtin.command: docker compose up -d
+      become: true
+      args:
+        chdir: /home/khalil/app/
 
-  tasks:
-  - name: set nameservers
-    become: true
-    ansible.builtin.linefile:
-      path: "/etc/resolv.conf" 
-      line: "nameserver 8.8.8.8" 
-    
-      
+    # - name: Get secret vault
+      # debug:
+        # msg: "{{ lookup('hashi_vault', 'secret=/v1/home/data/khtrabelsi
+          # X-Vault-Token=hvs.CAESIOLoMwWx4VHO6G9JX13oYTAMXNYByjKqjZh-1P2KjPUkGh4KHGh2cy5ndGlhS25ReFdWV3R3b3NNZ1J4NkZwR00
+          # url=https://vault.edu.forestier.re')}}"

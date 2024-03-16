@@ -1,20 +1,22 @@
-#install docker on remote server
+#install docker on the remote server
 - name: Install docker
   hosts: servers
   become: true
 
   tasks:
     - name: Install docker dependencies
+      become: true
       ansible.builtin.apt:
         name:
           - apt-transport-https
           - ca-certificates
           - curl
-          - gnupg-agent
+          - gnupg
           - software-properties-common
-        update_cache: true
+        state: latest  
 
     - name: Add docker gpg key
+      become: true
       ansible.builtin.shell:
         cmd: | 
           sudo install -m 0755 -d /etc/apt/keyrings
@@ -22,17 +24,22 @@
           sudo chmod a+r /etc/apt/keyrings/docker.asc
           
     - name: Add the repository to Apt sources
+      become: true
       block:
         - name: Add repos
           ansible.builtin.shell:
             cmd: |
               echo \
-              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
               $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
               sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-       
+        - name: update apt
+          ansible.builtin.shell:
+            cmd: |
+              sudo apt-get update
 
     - name: Install docker engine
+      become: true
       ansible.builtin.apt:
         name:
           - docker-ce
@@ -41,4 +48,5 @@
           - docker-buildx-plugin
           - docker-scan-plugin
           - docker-compose-plugin
-        update_cache: true
+
+

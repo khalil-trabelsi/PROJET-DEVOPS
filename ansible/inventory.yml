@@ -1,0 +1,6 @@
+all:
+  children:
+    servers:
+      hosts: 185.34.141.126
+      vars:
+        mysql_root_pass: !vault 
