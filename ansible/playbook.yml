@@ -1,32 +1,205 @@
 - name: Tp noté
   hosts: servers
-  become: false
+  become: true
   any_errors_fatal: true
-  # vars:
-    # - vault_addr:  https://vault.edu.forestier.re/v1/home/data/khtrabelsi
-    # - vault_secret_path: mysql_root_pass
   tasks:    
     - name: set nameservers
       become: true
       ansible.builtin.lineinfile:
         path: "/etc/resolv.conf" 
         line: "nameserver 8.8.8.8" 
-# 
-    # - name: create project folder
-      # ansible.builtin.shell:
-        # cmd: mkdir app
+    - name: Install docker dependencies
+      become: true
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+        state: latest
+
+    - name: Add docker gpg key
+      become: true
+      ansible.builtin.shell:
+        cmd: |
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+    - name: Add the repository to Apt sources
+      become: true
+      block:
+        - name: Add repos
+          ansible.builtin.shell:
+            cmd: |
+              echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+              $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        - name: update apt
+          ansible.builtin.shell:
+            cmd: |
+              sudo apt-get update
+
+    - name: Install docker engine
+      become: true
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-scan-plugin
+          - docker-compose-plugin 
+    - name: Check if project folder exists
+      ansible.builtin.stat:
+        path: app
+      register: folder_exists
+       
+    - name: Create project folder if it doesn't exist
+      ansible.builtin.shell:
+        cmd: mkdir app
+      when: not folder_exists.stat.exists   
+    - name: install mkfs
+      become: true
+      shell:
+        cmd: sudo apt-get install e2fsprogs
+    - name: Check if disk is already mounted
+      ansible.builtin.stat:
+        path: /mnt
+      register: disk_mounted
+    
+    - name: Format disk with ext4 filesystem if it's not already mounted
+      become: true
+      ansible.builtin.command: mkfs.ext4 /dev/vdb
+      when: not disk_mounted.stat.exists
+    
+    - name: Mount disk if it's not already mounted
+      become: true
+      ansible.builtin.command: mount /dev/vdb /mnt
+      when: not disk_mounted.stat.exists 
+
+          
     - name: copy docker-compose file to project folder
       ansible.builtin.copy:
         src: /home/khalil/PROJET-DEVOPS/docker/docker-compose.yml
         dest: /home/khalil/app/docker-compose.yml
+
     - name: run docker compose
       ansible.builtin.command: docker compose up -d
       become: true
       args:
         chdir: /home/khalil/app/
+    - name: Installer Pip
+      become: true
+      ansible.builtin.package:
+        name: "pip"
+        state: present
+    - name: installer pymysql
+      become: true
+      ansible.builtin.pip:
+        name: "PyMySQL"
+        state: present
 
-    # - name: Get secret vault
-      # debug:
-        # msg: "{{ lookup('hashi_vault', 'secret=/v1/home/data/khtrabelsi
-          # X-Vault-Token=hvs.CAESIOLoMwWx4VHO6G9JX13oYTAMXNYByjKqjZh-1P2KjPUkGh4KHGh2cy5ndGlhS25ReFdWV3R3b3NNZ1J4NkZwR00
-          # url=https://vault.edu.forestier.re')}}"
+    - name: Creating  nextcloud_db & wordpress_db
+      community.mysql.mysql_db:
+        check_implicit_admin: true
+        name:
+          - wordpress_db
+          - nextcloud_db
+        login_user: "root"
+        login_password: "root"
+        login_unix_socket: /mnt/sock/mysqld.sock
+        login_port: 3306
+        state: present
+        login_host: '%'
+    - name: Creating wordpress_db's user
+      community.mysql.mysql_user:
+        check_implicit_admin: true
+        login_user: "root"
+        login_password: "root"
+        login_unix_socket: /mnt/sock/mysqld.sock
+        name: "wordpress_admin"
+        password: "wordpress"
+        login_port: "3306"
+        state: present
+        login_host: "%"
+
+    - name: Create nextcloud user
+      community.mysql.mysql_user:
+        check_implicit_admin: true
+        login_user: "root"
+        login_password: "root"
+        login_unix_socket: /mnt/sock/mysqld.sock
+        name: "nextcloud_admin"
+        password: "nextcloud"
+        login_port: "3306"
+        state: present
+        login_host: "%"
+    - name: Grant all privileges to nextcloud_admin
+      community.mysql.mysql_query:
+        login_user: root
+        login_password: root
+        login_unix_socket: /mnt/sock/mysqld.sock
+        login_host: "%"
+        query: "GRANT ALL PRIVILEGES ON nextcloud_db.* TO 'nextcloud_admin'@'%' IDENTIFIED BY 'nextcloud'"
+    - name: Grant all privileges to wordpress_admin
+      community.mysql.mysql_query:
+        login_user: root
+        login_password: root
+        login_unix_socket: /mnt/sock/mysqld.sock
+        login_host: "%"
+        query: "GRANT ALL PRIVILEGES ON wordpress_db.* TO 'wordpress_admin'@'%' IDENTIFIED BY 'wordpress'"
+    - name: validate priviliges
+      community.mysql.mysql_query:
+        login_user: "root"
+        login_password: "root"
+        login_unix_socket: /mnt/sock/mysqld.sock
+        login_host: '%'
+        query: "FLUSH PRIVILEGES"
+
+    - name: Set prometheus file
+      become: true
+      ansible.builtin.copy:
+        src: /home/khalil/PROJET-DEVOPS/ansible/prometheus.yaml
+        dest: /mnt/prometheus.yaml
+    - name: Exécuter la commande Docker run
+      community.docker.docker_container:
+        name: prometheus
+        image: prom/prometheus:latest
+        state: started
+        restart_policy: always
+        detach: yes
+        ports:
+          - "9090:9090"
+        env:
+          STORAGE_TSDB_PATH: /prometheus
+        volumes:
+          - "/mnt/prometheus.yaml:/etc/prometheus/prometheus.yaml"
+    
+    - name: Grafana
+      community.docker.docker_container:
+        name: grafana
+        image: grafana/grafana:latest
+        state: started
+        restart_policy: always
+        detach: yes
+        env:
+          GF_SMTP_ENABLED: "true"
+          GF_SERVER_ROOT_URL: "http://localhost:3000"
+        ports:
+          - "3000:3000"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.grafana.rule: "Host(`grafana.khalil.uca-devops.ovh`)"
+          traefik.http.routers.grafana.entrypoints: "insecure"
+          traefik.http.routers.grafana_https.rule: "Host(`grafana.khalil.uca-devops.ovh`)"
+          traefik.http.routers.grafana_https.tls: "true"
+          traefik.http.routers.grafana_https.entrypoints: "secure"
+          traefik.http.routers.grafana_https.tls.certresolver: "myresolver"
+          traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: "https"
+        
+                
+
+

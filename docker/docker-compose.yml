@@ -1,7 +1,38 @@
 services:
+  reverse-proxy:
+    image: traefik:v2.4
+    container_name: traefik
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # - /mnt/conf/traefik.yaml:/traefik.yaml
+      # - /mnt/conf/acme.json:/acme.json
+      - /mnt:/letsencrypt
+    networks:
+      - my-network
+    command:
+      # - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.insecure.address=:80"  
+      - "--entrypoints.secure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=insecure"
+      - "--certificatesresolvers.myresolver.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myresolver.acme.email=noreply@forestier.re"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    # labels:
+      # - "traefik.http.routers.http-catchall.entrypoints=web"
+      # - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      # - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
   mariadb:
     image: mariadb:latest
-    # restart: always
+    restart: always
     volumes:
       - /mnt/mariadb_data:/var/lib/mysql
       - /mnt/sock:/var/run/mysqld
@@ -15,37 +46,47 @@ services:
     image: nextcloud:latest
     restart: always
     ports:
-      - "8083:80"
-    environment:
-      - "MYSQL_HOST: mariadb"
-      - "MYSQL_DATABASE: nextcloud_db"
-      - "MYSQL_USER: nextcloud_admin"
-      - "MYSQL_PASSWORD: nextcloud"  
+      - "4002:80"
     volumes:
       - /mnt/nextcloud_data:/var/www/html
       - /mnt/sock:/var/run/mysql
     depends_on:
       - mariadb    
     networks:
-      - my-network  
+      - my-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cloud.rule=Host(`cloud.khalil.uca-devops.ovh`)"
+      - "traefik.http.routers.cloud.entrypoints=insecure"
+      - "traefik.http.routers.cloud_https.rule=Host(`cloud.khalil.uca-devops.ovh`)"
+      - "traefik.http.routers.cloud_https.tls=true"
+      - "traefik.http.routers.cloud.tls.certresolver=myresolver"
+      - "traefik.http.routers.cloud.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.cloud_https.entrypoints=secure"
   wordpress:
-    image: wordpress:latest
-    environment:
-      - "MYSQL_HOST: mariadb"
-      - "MYSQL_DATABASE: wordpress_db"
-      - "MYSQL_USER: wordpress_admin"
-      - "MYSQL_PASSWORD: wordpress"
+    image: wordpress
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.blog.rule=Host(`bloga.khalil.uca-devops.ovh`)"
+      - "traefik.http.routers.blog.entrypoints=insecure"
+      - "traefik.http.routers.blog_https.rule=Host(`bloga.khalil.uca-devops.ovh`)"
+      - "traefik.http.routers.blog_https.tls=true"
+      - "traefik.http.routers.blog_https.entrypoints=secure"
+      - "traefik.http.routers.blog.tls.certresolver=myresolver"
+      - "traefik.http.routers.blog.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+       
     restart: always
     ports:
-      - "8081:80"
+      - "4000:80"
     volumes:
       - /mnt/wordpress_data:/var/www/html
       - /mnt/sock:/var/run/mysql
     depends_on: 
       - mariadb
     networks:
-      - my-network
-        
+      - my-network         
 
 networks:
   my-network:
@@ -53,6 +94,6 @@ networks:
   
 volumes:
   nextcloud_data:
-  wordpress_data:
+  wd_data:
   mariadb_data:
   sock:

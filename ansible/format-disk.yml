@@ -1,8 +1,0 @@
-- name: Format and mount disk
-  hosts: servers
-  become: true
-  tasks: 
-    - name: Format disk with ext4 filesystem
-      ansible.builtin.command: mkfs.ext4 /dev/vdb
-    - name: mount disk
-      ansible.builtin.command: mount /dev/vdb /mnt  
